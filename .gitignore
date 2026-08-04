@@ -2,4 +2,4 @@ venv/
 piper_voices/
 yolov8n_ncnn_model/
 yolov8n.pt
-
+__pycache__
