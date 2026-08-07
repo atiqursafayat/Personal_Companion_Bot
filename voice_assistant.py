@@ -12,9 +12,7 @@ import soundfile as sf
 from voice_commands import answer_local_question
 from mood_reactions import MoodReactionEngine
 from mood_state_io import read_mood
-
-# Initialize pygame mixer once at startup
-pygame.mixer.init()
+from reminders import pop_due_items
 
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 VOICE_MODEL = (
@@ -25,6 +23,34 @@ STOP_PHRASES = ("stop",)
 SLEEP_LISTEN_SECONDS = 3
 ACTIVE_LISTEN_SECONDS = 5
 PREFERRED_SAMPLE_RATES = (16000, 22050, 44100, 48000)
+TEXT_ONLY_MODE = os.environ.get("COMPANION_TEXT_ONLY", "").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
+_audio_output_checked = False
+_audio_output_available = False
+
+
+def _initialize_audio_output():
+    """Initialize the default speaker if one exists; otherwise use text only."""
+    global _audio_output_available, _audio_output_checked
+
+    if _audio_output_checked:
+        return _audio_output_available
+    _audio_output_checked = True
+
+    if TEXT_ONLY_MODE:
+        print("Text-only mode enabled; spoken replies are disabled.")
+        return False
+
+    try:
+        pygame.mixer.init()
+        _audio_output_available = True
+    except pygame.error as exc:
+        print(f"No audio output available; continuing in text-only mode: {exc}")
+    return _audio_output_available
 
 
 def normalize_text(text):
@@ -37,6 +63,7 @@ def has_phrase(text, phrases):
 
 
 def _resolve_input_device():
+    """Return the operating system's default audio input device."""
     default_device = sd.default.device
     input_device = (
         default_device[0]
@@ -44,19 +71,25 @@ def _resolve_input_device():
         else default_device
     )
 
-    if input_device not in (None, -1):
-        try:
-            device_info = sd.query_devices(input_device, kind="input")
-            if device_info["max_input_channels"] > 0:
-                return input_device, device_info
-        except Exception:
-            pass
+    if input_device in (None, -1):
+        raise RuntimeError(
+            "No default audio input device is configured. Set the system default "
+            "microphone, then restart the voice assistant."
+        )
 
-    for device_index, device_info in enumerate(sd.query_devices()):
-        if device_info["max_input_channels"] > 0:
-            return device_index, device_info
+    try:
+        device_info = sd.query_devices(input_device, kind="input")
+    except Exception as exc:
+        raise RuntimeError(
+            f"Could not open the default audio input device ({input_device})."
+        ) from exc
 
-    raise RuntimeError("No usable audio input device was found.")
+    if device_info["max_input_channels"] < 1:
+        raise RuntimeError(
+            f"The default audio device ({device_info['name']}) has no input channel."
+        )
+
+    return input_device, device_info
 
 
 def _choose_samplerate(device_index, device_info):
@@ -122,6 +155,11 @@ def get_reply(user_text, history, extra_system_context=None):
 
 
 def speak(text, filename="reply.wav"):
+    global _audio_output_available
+
+    if not _initialize_audio_output():
+        return False
+
     piper_command = shutil.which("piper")
     if not piper_command:
         piper_command = os.path.join(os.path.dirname(sys.executable), "piper")
@@ -137,15 +175,22 @@ def speak(text, filename="reply.wav"):
         check=True,
     )
 
-    pygame.mixer.music.load(filename)
-    pygame.mixer.music.play()
-    while pygame.mixer.music.get_busy():
-        time.sleep(0.01)
+    try:
+        pygame.mixer.music.load(filename)
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            time.sleep(0.01)
+    except pygame.error as exc:
+        _audio_output_available = False
+        print(f"Audio playback failed; continuing in text-only mode: {exc}")
+        return False
+    return True
 
 
 def listen_for_wake_word():
     print("Sleep mode. Say 'Wake up' to activate.")
     while True:
+        announce_due_reminders()
         record_audio(duration=SLEEP_LISTEN_SECONDS, filename="sleep.wav")
         text = transcribe("sleep.wav")
         if not text:
@@ -158,6 +203,13 @@ def listen_for_wake_word():
 
 
 mood_engine = MoodReactionEngine()
+
+
+def announce_due_reminders():
+    for item in pop_due_items():
+        message = item.get("message", "Your reminder is due.")
+        print(f"[{item.get('kind', 'reminder')}] Robot says: {message}")
+        speak(message)
 
 
 def maybe_react_to_mood(history):
@@ -186,6 +238,7 @@ def maybe_react_to_mood(history):
 def conversation_loop(history):
     print("Conversation mode. Say 'stop' to go back to sleep.")
     while True:
+        announce_due_reminders()
         maybe_react_to_mood(history)
 
         record_audio(duration=ACTIVE_LISTEN_SECONDS)
