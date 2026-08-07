@@ -3,15 +3,24 @@ import time
 from ultralytics import YOLO
 from deepface import DeepFace
 
+from device_controls import save_requested_picture
 from mood_state_io import write_mood
 
 # 1. Load YOLOv8 Nano NCNN model for person detection
 model = YOLO("./yolov8n_ncnn_model", task="detect")
 
-# 2. Configure Logitech C270 Webcam
-cap = cv2.VideoCapture(0)
+# 2. Configure the operating system's default camera.
+# OpenCV index 0 represents the default/first video capture device.
+DEFAULT_CAMERA_INDEX = 0
+cap = cv2.VideoCapture(DEFAULT_CAMERA_INDEX)
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
+
+if not cap.isOpened():
+    raise RuntimeError(
+        "Could not open the default camera (OpenCV index 0). "
+        "Check that a default camera is connected and not exclusively in use."
+    )
 
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
@@ -35,6 +44,10 @@ while cap.isOpened():
         break
 
     frame_counter += 1
+
+    saved_picture = save_requested_picture(frame, cv2)
+    if saved_picture:
+        print(f"[CAMERA] Picture saved to {saved_picture}")
 
     # Track Humans (class 0 = person)
     results = model.track(
