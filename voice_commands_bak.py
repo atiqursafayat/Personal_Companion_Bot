@@ -29,22 +29,6 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote_plus
 from urllib.request import urlopen
 
-from assistant_tools import (
-    change_assistant_volume,
-    get_assistant_volume,
-    parse_volume_request,
-    save_snapshot,
-    set_assistant_volume,
-)
-from personal_memory import describe_memory, read_memory
-from reminder_engine import (
-    cancel_reminder,
-    create_reminder,
-    describe_reminders,
-    parse_reminder_request,
-    publish_reminder_state,
-)
-
 WEATHER_LOCATION = os.environ.get("WEATHER_LOCATION", "Dhaka").strip()
 
 WEATHER_CODE_DESCRIPTIONS = {
@@ -110,25 +94,12 @@ def handle_time(text):
     return None
 
 
-@register_command("date")
-def handle_date(text):
-    normalized = normalize_text(text)
-    if "what day is it" in normalized or "what's the date" in normalized or "what is the date" in normalized:
-        now = datetime.now().astimezone()
-        return now.strftime("Today is %A, %B %d, %Y.").replace(" 0", " ")
-    return None
-
-
 # ---------------------------------------------------------------------------
 # Weather command
 # ---------------------------------------------------------------------------
 
 def is_weather_question(text):
     normalized = normalize_text(text)
-    if "my temperature" in normalized:
-        # "what's my temperature" means body temperature (handled by
-        # robot_commands.py), not outdoor weather -- don't claim it here.
-        return False
     return "weather" in normalized or "temperature" in normalized
 
 
@@ -212,107 +183,6 @@ def get_current_weather_text(location):
 def handle_weather(text):
     if is_weather_question(text):
         return get_current_weather_text(extract_weather_location(text))
-    return None
-
-
-@register_command("volume_control")
-def handle_volume_control(text):
-    normalized = normalize_text(text)
-
-    if "unmute" in normalized:
-        set_assistant_volume(70)
-        return "I'm back at 70 percent volume."
-
-    if "mute" in normalized:
-        set_assistant_volume(0)
-        return "Okay, I've muted my speaker volume."
-
-    if "volume up" in normalized or "turn it up" in normalized or "increase volume" in normalized:
-        volume = change_assistant_volume(10)
-        return f"Volume is now {volume} percent."
-
-    if "volume down" in normalized or "turn it down" in normalized or "decrease volume" in normalized:
-        volume = change_assistant_volume(-10)
-        return f"Volume is now {volume} percent."
-
-    if "set volume" in normalized or "volume to" in normalized:
-        requested = parse_volume_request(normalized)
-        if requested is None:
-            return "Tell me a number from 0 to 100 for the volume."
-        volume = set_assistant_volume(requested)
-        return f"Okay, volume set to {volume} percent."
-
-    if "what is the volume" in normalized or "what's the volume" in normalized:
-        return f"My speaker volume is {get_assistant_volume()} percent."
-
-    return None
-
-
-@register_command("snapshot")
-def handle_snapshot(text):
-    normalized = normalize_text(text)
-    if "take a picture" not in normalized and "take picture" not in normalized and "take a photo" not in normalized and "snapshot" not in normalized:
-        return None
-
-    snapshot_path = save_snapshot()
-    if snapshot_path is None:
-        return "I can't take a picture right now because I don't have a recent camera frame."
-    return f"I took a picture and saved it as {os.path.basename(snapshot_path)}."
-
-
-@register_command("memory_lookup")
-def handle_memory_lookup(text):
-    normalized = normalize_text(text)
-    memory = read_memory()
-
-    if "what do you remember about me" in normalized:
-        summary = describe_memory(memory)
-        return summary or "I don't know much about your preferences yet."
-
-    if "read my notes" in normalized or "what are my notes" in normalized:
-        notes = memory.get("notes") or []
-        if not notes:
-            return "You don't have any saved notes yet."
-        return "Your latest notes are: " + "; ".join(notes[:3]) + "."
-
-    return None
-
-
-@register_command("reminders")
-def handle_reminders(text):
-    normalized = normalize_text(text)
-
-    reminder_data = parse_reminder_request(normalized)
-    if reminder_data:
-        reminder = create_reminder(reminder_data)
-        publish_reminder_state()
-        return (
-            "Okay, reminder set for "
-            f"{reminder['text']}."
-        )
-
-    if (
-        "what are my reminders" in normalized
-        or "list my reminders" in normalized
-        or "show my reminders" in normalized
-    ):
-        publish_reminder_state()
-        return describe_reminders()
-
-    cancel_match = re.search(
-        r"(?:cancel|delete|remove)\s+(?:my\s+)?reminder(?:\s+to)?\s+(.+)$",
-        normalized,
-    )
-    if cancel_match:
-        cancelled = cancel_reminder(text_match=cancel_match.group(1).strip())
-        publish_reminder_state()
-        if cancelled:
-            return f"Okay, I cancelled the reminder for {cancelled['text']}."
-        return "I couldn't find a matching reminder to cancel."
-
-    if "cancel reminder" in normalized and "to " not in normalized:
-        return "Tell me which reminder you want to cancel."
-
     return None
 
 

@@ -31,7 +31,8 @@ MIN_AGREEMENT = 3
 DEFAULT_COOLDOWN_SECONDS = 300
 COOLDOWN_SECONDS = {
     "SAD": 300,     # 5 min — don't keep telling someone they seem sad
-    "ANGRY": 180,   # 3 min — check in a bit sooner if frustration lingers
+    "ANGRY": 180,
+    "HAPPY": 180    # 3 min — don't keep telling someone they seem happy
 }
 
 # Moods that should trigger a spoken reaction, and the system-prompt hint
@@ -48,6 +49,11 @@ REACTION_PROMPTS = {
         "mood without being falsely cheerful or dismissive. Do not "
         "mention that you detected this from their face."
     ),
+    "HAPPY": (
+        "The user appears happy or cheerful right now. In your next "
+        "reply, be warm and enthusiastic. Offer a short, genuine, "
+        "encouraging remark. Do not mention that you detected this from their face."
+    )
 }
 
 

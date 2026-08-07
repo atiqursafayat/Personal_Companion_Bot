@@ -17,6 +17,30 @@ import tempfile
 import time
 
 MOOD_STATE_PATH = os.environ.get("MOOD_STATE_PATH", "/tmp/robot_mood_state.json")
+MOOD_HISTORY_PATH = os.environ.get("MOOD_HISTORY_PATH", "/tmp/robot_mood_history.json")
+MAX_MOOD_HISTORY = 180
+
+
+def _atomic_write_json(path, payload):
+    directory = os.path.dirname(path) or "."
+    fd, tmp_path = tempfile.mkstemp(dir=directory)
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(payload, f)
+        os.replace(tmp_path, path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
+
+
+def _read_history():
+    try:
+        with open(MOOD_HISTORY_PATH, "r") as f:
+            payload = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError, TypeError):
+        return []
+    return payload if isinstance(payload, list) else []
 
 
 def write_mood(mood, confidence=None):
@@ -26,17 +50,11 @@ def write_mood(mood, confidence=None):
         "confidence": confidence,
         "timestamp": time.time(),
     }
-    # Write atomically so a reader never sees a half-written file.
-    directory = os.path.dirname(MOOD_STATE_PATH) or "."
-    fd, tmp_path = tempfile.mkstemp(dir=directory)
-    try:
-        with os.fdopen(fd, "w") as f:
-            json.dump(payload, f)
-        os.replace(tmp_path, MOOD_STATE_PATH)
-    except Exception:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-        raise
+    _atomic_write_json(MOOD_STATE_PATH, payload)
+
+    history = _read_history()
+    history.append(payload)
+    _atomic_write_json(MOOD_HISTORY_PATH, history[-MAX_MOOD_HISTORY:])
 
 
 def read_mood(max_age_seconds=10):
@@ -49,11 +67,35 @@ def read_mood(max_age_seconds=10):
     try:
         with open(MOOD_STATE_PATH, "r") as f:
             payload = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (FileNotFoundError, json.JSONDecodeError, OSError, TypeError):
         return None, None
 
-    age = time.time() - payload.get("timestamp", 0)
+    if not isinstance(payload, dict):
+        return None, None
+    timestamp = payload.get("timestamp")
+    if not isinstance(timestamp, (int, float)):
+        return None, None
+    age = time.time() - timestamp
     if age > max_age_seconds:
         return None, None
 
     return payload.get("mood"), payload.get("confidence")
+
+
+def read_mood_history(limit=30, max_age_seconds=1800):
+    cutoff = time.time() - max_age_seconds
+    history = []
+    for entry in _read_history():
+        if not isinstance(entry, dict):
+            continue
+        timestamp = entry.get("timestamp")
+        if not isinstance(timestamp, (int, float)) or timestamp < cutoff:
+            continue
+        history.append(
+            {
+                "mood": entry.get("mood"),
+                "confidence": entry.get("confidence"),
+                "timestamp": timestamp,
+            }
+        )
+    return history[-limit:]
