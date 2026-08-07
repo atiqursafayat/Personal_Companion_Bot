@@ -1,5 +1,11 @@
 venv/
+__pycache__/
+*.pyc
 piper_voices/
 yolov8n_ncnn_model/
 yolov8n.pt
-
+.companion_data/
+captures/
+input.wav
+sleep.wav
+reply.wav
