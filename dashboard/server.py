@@ -288,12 +288,22 @@ async def serve_capture(filename: str):
 if __name__ == "__main__":
     import uvicorn
 
+    # Ensure the project root is on sys.path so the dashboard package is
+    # importable when this script is launched directly by main.py as a
+    # subprocess (cwd = PROJECT_ROOT, but the package may not be on the path).
+    _project_root = str(PROJECT_ROOT)
+    if _project_root not in sys.path:
+        sys.path.insert(0, _project_root)
+
     print(
         f"[DASHBOARD] Starting on http://{DASHBOARD_HOST}:{DASHBOARD_PORT}",
         flush=True,
     )
+    # Pass the app object directly rather than a module string so uvicorn
+    # does not attempt a fresh import of 'dashboard.server' (which would
+    # fail if sys.path is not yet updated at that point).
     uvicorn.run(
-        "dashboard.server:app",
+        app,
         host=DASHBOARD_HOST,
         port=DASHBOARD_PORT,
         log_level="warning",
