@@ -1,7 +1,15 @@
 # Personal Companion Bot
 
-Run `target_mood_tracker.py` and `voice_assistant.py` together. The tracker owns
-the default camera; the assistant uses the default microphone.
+Three cooperating processes managed by `main.py`:
+
+- **Vision** (`target_mood_fixed.py`) — owns the default camera, detects people and
+  reads emotions via YOLO + DeepFace, writes the current mood to a shared state file.
+- **Voice** (`voice_assistant.py`) — listens on the default microphone, answers local
+  commands, and falls back to a Groq LLM for open conversation. Reacts to the mood
+  detected by the vision process.
+- **Dashboard** (`dashboard/server.py`) — serves a real-time web dashboard at
+  `http://localhost:8080` showing the live camera feed, current mood, system status,
+  reminders, and recent captures.
 
 An audio output device is optional. If no default speaker is available, the
 assistant continues in text-only mode and prints its replies. To explicitly
@@ -9,16 +17,29 @@ disable spoken output, start it with `COMPANION_TEXT_ONLY=1`.
 
 ## Setup
 
-Create and activate the virtual environment, then install the voice-assistant
-dependencies:
+### 1 — System packages
+
+Install the PortAudio library required by `sounddevice`:
+
+```bash
+sudo apt install -y libportaudio2 portaudio19-dev
+```
+
+Optional — needed only for brightness and media voice commands:
+
+```bash
+sudo apt install -y brightnessctl playerctl
+```
+
+### 2 — Python environment
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-pip install groq numpy pygame sounddevice soundfile piper-tts
+pip install -r requirements.txt
 ```
 
-Download the Piper voice model:
+### 3 — Piper voice model
 
 ```bash
 mkdir -p piper_voices
@@ -28,22 +49,27 @@ wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/me
 cd ..
 ```
 
-Set the Groq API key for the current terminal session:
+### 4 — YOLO NCNN model
+
+```bash
+python3 -c "from ultralytics import YOLO; model = YOLO('yolov8n.pt'); model.export(format='ncnn', imgsz=320)"
+```
+
+This downloads `yolov8n.pt` on the first run and creates the `yolov8n_ncnn_model/`
+directory used by the vision process.
+
+### 5 — Groq API key
+
+Get a free key at [console.groq.com](https://console.groq.com) → API Keys, then
+export it in every terminal session where you run the bot:
 
 ```bash
 export GROQ_API_KEY="your_api_key_here"
 ```
 
-Install the vision dependencies and export the YOLO model to NCNN:
-
-```bash
-pip install ultralytics ncnn
-python3 -c "from ultralytics import YOLO; model = YOLO('yolov8n.pt'); model.export(format='ncnn', imgsz=320)"
-```
-
 ## How to start
 
-Start both the mood tracker and voice assistant together with `main.py`:
+Start all three processes together:
 
 ```bash
 source venv/bin/activate
@@ -51,20 +77,23 @@ export GROQ_API_KEY="your_api_key_here"
 python3 main.py
 ```
 
-Press `Ctrl+C` in the terminal to stop both programs. Pressing `q` in the mood
-tracker window also causes `main.py` to stop the voice assistant.
+Then open **http://localhost:8080** in your browser to see the live dashboard.
 
-You can still run the processes separately for debugging. Open two terminals in
-the project directory and use the following commands.
+Press `Ctrl+C` in the terminal to stop all processes. Pressing `q` in the
+vision window also causes `main.py` to stop the other processes.
 
-Terminal 1 — mood tracker:
+## Running processes separately (debugging)
+
+Open three terminals in the project directory.
+
+**Terminal 1 — vision:**
 
 ```bash
 source venv/bin/activate
-python3 target_mood_tracker.py
+python3 target_mood_fixed.py
 ```
 
-Terminal 2 — voice assistant:
+**Terminal 2 — voice assistant:**
 
 ```bash
 source venv/bin/activate
@@ -72,7 +101,14 @@ export GROQ_API_KEY="your_api_key_here"
 python3 voice_assistant.py
 ```
 
-To run without a speaker or other output device:
+**Terminal 3 — dashboard only:**
+
+```bash
+source venv/bin/activate
+python3 dashboard/server.py
+```
+
+To run the voice assistant without a speaker:
 
 ```bash
 source venv/bin/activate
@@ -80,8 +116,26 @@ export GROQ_API_KEY="your_api_key_here"
 COMPANION_TEXT_ONLY=1 python3 voice_assistant.py
 ```
 
-Press `q` in the mood-tracker window to stop it. Press `Ctrl+C` in the voice
-assistant terminal to stop the assistant.
+## Dashboard
+
+The dashboard is served at `http://localhost:8080` (LAN-accessible via your machine's
+IP on the same port). It shows:
+
+- **Live camera feed** — annotated MJPEG stream from the vision process
+- **Current mood** — detected emotion and confidence percentage, updated every second
+- **System status** — battery, CPU temperature, disk usage, Wi-Fi network
+- **Upcoming reminders** — all pending timers and reminders with their due times
+- **Recent captures** — thumbnail gallery of saved photos and screenshots
+
+The dashboard updates automatically via Server-Sent Events — no page reload needed.
+
+### Dashboard environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `DASHBOARD_HOST` | `0.0.0.0` | Bind address (`127.0.0.1` for localhost-only) |
+| `DASHBOARD_PORT` | `8080` | Port the dashboard listens on |
+| `LATEST_FRAME_PATH` | `/tmp/robot_latest_frame.jpg` | Shared camera frame path |
 
 ## Device voice commands
 
