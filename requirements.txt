@@ -1,0 +1,19 @@
+# Voice assistant
+groq
+sounddevice
+soundfile
+pygame
+piper-tts
+
+# Vision
+ultralytics
+ncnn
+opencv-python
+
+# Emotion detection
+deepface
+
+# Dashboard
+fastapi>=0.111
+uvicorn[standard]>=0.29
+aiofiles>=23.0

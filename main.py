@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 PROJECT_DIRECTORY = Path(__file__).resolve().parent
-PROGRAMS = ("target_mood_fixed.py", "voice_assistant.py")
+PROGRAMS = ("target_mood_fixed.py", "voice_assistant.py", "dashboard/server.py")
 SHUTDOWN_TIMEOUT_SECONDS = 5
 
 

@@ -38,6 +38,12 @@ RIGHT_BOUNDARY = 390
 TOO_CLOSE_HEIGHT = 360
 TOO_FAR_HEIGHT = 130
 
+# Path where the annotated frame is written each loop so the dashboard server
+# can stream it without owning the camera. Set to empty string to disable.
+LATEST_FRAME_PATH = os.environ.get(
+    "LATEST_FRAME_PATH", "/tmp/robot_latest_frame.jpg"
+)
+
 
 # ============================================================
 # Mood helpers
@@ -707,6 +713,13 @@ try:
             "Target Human & Mood Tracker",
             frame
         )
+
+
+        # Write the annotated frame for the dashboard server.
+        # cv2.imwrite is atomic enough at this frame rate; a partial read
+        # by the dashboard produces a skipped frame at worst.
+        if LATEST_FRAME_PATH:
+            cv2.imwrite(LATEST_FRAME_PATH, frame)
 
 
         key = (
